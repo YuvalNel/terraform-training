@@ -1,5 +1,7 @@
-## Output value definitions
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
 
-output "nginx_hosts" {
-  value = [for container in docker_container.nginx : { name : container.name, host : "${container.ports[0].ip}:${container.ports[0].external}" }]
+output "public_dns_name" {
+  description = "Public DNS names of the load balancer for this project"
+  value       = module.elb_http.elb_dns_name
 }

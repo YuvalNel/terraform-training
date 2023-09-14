@@ -1,47 +1,115 @@
-provider "docker" {}
+# Copyright (c) HashiCorp, Inc.
+# SPDX-License-Identifier: MPL-2.0
 
-provider "random" {}
+provider "aws" {
+  region  = var.aws_region
+  access_key = "AKIAVXO3G2MU7KCI74OF"
+  secret_key = "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"
 
-provider "time" {}
-
-resource "docker_image" "nginx" {
-  name         = "nginx:latest"
-  keep_locally = true
 }
 
-resource "random_pet" "nginx" {
-  length = 2
+data "aws_availability_zones" "available" {
+  state = "available"
 }
 
-resource "docker_container" "nginx" {
-  count = 4
-  image = docker_image.nginx.latest
-  name  = "nginx-${random_pet.nginx.id}-${count.index}"
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "3.19.0"
 
-  ports {
-    internal = 80
-    external = 8000 + count.index
+  cidr = var.vpc_cidr_block
+
+  azs             = data.aws_availability_zones.available.names
+  private_subnets = slice(var.private_subnet_cidr_blocks, 0, var.private_subnet_count)
+  public_subnets  = slice(var.public_subnet_cidr_blocks, 0, var.public_subnet_count)
+
+  enable_nat_gateway = true
+  enable_vpn_gateway = var.enable_vpn_gateway
+
+  tags = var.resource_tags
+
+  
+}
+
+module "app_security_group" {
+  source  = "terraform-aws-modules/security-group/aws//modules/web"
+  version = "4.17.0"
+
+  name        = "web-sg-${var.resource_tags["project"]}-${var.resource_tags["environment"]}"
+
+  description = "Security group for web-servers with HTTP ports open within VPC"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress_cidr_blocks = module.vpc.public_subnets_cidr_blocks
+
+  tags = var.resource_tags
+
+}
+
+module "lb_security_group" {
+  source  = "terraform-aws-modules/security-group/aws//modules/web"
+  version = "4.17.0"
+
+  name        = "lb-sg-${var.resource_tags["project"]}-${var.resource_tags["environment"]}"
+
+  description = "Security group for load balancer with HTTP ports open within VPC"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress_cidr_blocks = ["0.0.0.0/0"]
+
+  tags = var.resource_tags
+
+}
+
+resource "random_string" "lb_id" {
+  length  = 3
+  special = false
+}
+
+module "elb_http" {
+  source  = "terraform-aws-modules/elb/aws"
+  version = "4.0.1"
+
+  # Ensure load balancer name is unique
+  name = "lb-${random_string.lb_id.result}-${var.resource_tags["project"]}-${var.resource_tags["environment"]}"
+
+
+  internal = false
+
+  security_groups = [module.lb_security_group.security_group_id]
+  subnets         = module.vpc.public_subnets
+
+  number_of_instances = length(module.ec2_instances.instance_ids)
+  instances           = module.ec2_instances.instance_ids
+
+  listener = [{
+    instance_port     = "80"
+    instance_protocol = "HTTP"
+    lb_port           = "80"
+    lb_protocol       = "HTTP"
+  }]
+
+  health_check = {
+    target              = "HTTP:80/index.html"
+    interval            = 10
+    healthy_threshold   = 3
+    unhealthy_threshold = 10
+    timeout             = 5
   }
+
+  tags = var.resource_tags
+
 }
 
-resource "docker_image" "redis" {
-  name         = "redis:latest"
-  keep_locally = true
-}
+module "ec2_instances" {
+  source = "./modules/aws-instance"
 
-resource "time_sleep" "wait_60_seconds" {
-  depends_on = [docker_image.redis]
+  depends_on = [module.vpc]
 
-  create_duration = "60s"
-}
+  instance_count     = var.instance_count
+  instance_type      = var.ec2_instance_type
+  subnet_ids         = module.vpc.private_subnets[*]
+  security_group_ids = [module.app_security_group.security_group_id]
 
-resource "docker_container" "data" {
-  depends_on = [time_sleep.wait_60_seconds]
-  image      = docker_image.redis.latest
-  name       = "data"
+  tags = var.resource_tags
 
-  ports {
-    internal = 6379
-    external = 6379
-  }
 }
