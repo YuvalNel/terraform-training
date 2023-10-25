@@ -26,7 +26,7 @@ resource "aws_instance" "server" {
   instance_type = "t2.micro"
 
   tags = {
-    Name = "Learn Refresh23233"
+    Name = "Learn Refresh232333"
   }
 }
 
