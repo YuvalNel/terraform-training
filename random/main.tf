@@ -3,24 +3,25 @@ provider "random" {
   version = "~> 3.1"
 }
 
-# Generate random pet names
+# Define pet names
 resource "random_pet" "pet" {
-  count = 5  # Change the count to generate more or fewer random pet names
+  length = 4
+  separator = "-"
 }
 
-# Generate random strings
+# Define strings
 resource "random_string" "password" {
   length  = 16
   special = true
 }
 
-# Generate random integers
+# Define integers
 resource "random_integer" "number" {
   min = 1
   max = 100
 }
 
-# Output random values
+# Output defined values
 output "random_pets" {
   value = random_pet.pet.*.id
 }
