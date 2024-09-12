@@ -23,7 +23,7 @@ data "aws_ami" "amazon_linux" {
 
 resource "aws_instance" "server" {
   ami           = data.aws_ami.amazon_linux.id
-  instance_type = "t2.micro"
+  instance_type = "t2.large"
 
   tags = {
     Name = "Learn Refresh23231"
